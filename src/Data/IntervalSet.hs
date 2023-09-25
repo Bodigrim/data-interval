@@ -291,6 +291,18 @@ member x (IntervalSet b m) =
       FinishClosed   -> r == x
       FinishAndStart -> r /= x
 
+openMember :: Ord r => r -> IntervalSet r -> Bool
+openMember x (IntervalSet b m) =
+  case Map.lookupLE x m of
+    Nothing -> b
+    Just (r, t) -> case t of
+      StartOpen      -> True
+      StartClosed    -> True
+      StartAndFinish -> r == x
+      FinishOpen     -> r == x
+      FinishClosed   -> r == x
+      FinishAndStart -> True
+
 -- | Is the element not in the interval set?
 notMember :: Ord r => r -> IntervalSet r -> Bool
 notMember x is = not $ x `member` is
@@ -298,7 +310,33 @@ notMember x is = not $ x `member` is
 -- | Is this a subset?
 -- @(is1 \``isSubsetOf`\` is2)@ tells whether @is1@ is a subset of @is2@.
 isSubsetOf :: Ord r => IntervalSet r -> IntervalSet r -> Bool
-isSubsetOf is1 is2 = Old.isSubsetOf (toOld is1) (toOld is2)
+isSubsetOf is1 is2 = all (`isIntervalSubsetOf` is2) (toList is1)
+
+isIntervalSubsetOf :: Ord r => Interval r -> IntervalSet r -> Bool
+isIntervalSubsetOf i is@(IntervalSet hasNegInf m) = case i of
+  Whole -> hasNegInf && Map.null m
+  Empty -> True
+  Point x -> member x is
+  LessThan x -> hasNegInf && case Map.minViewWithKey m of
+    Nothing -> True
+    Just ((y, _), _) -> x <= y
+  LessOrEqual x -> hasNegInf && case Map.minViewWithKey m of
+    Nothing -> True
+    Just ((y, t), _) -> x < y || x == y && t == FinishClosed
+  GreaterThan x -> hasPosInf is && case Map.maxViewWithKey m of
+    Nothing -> True
+    Just ((y, _), _) -> x >= y
+  GreaterOrEqual x -> hasPosInf is && case Map.maxViewWithKey m of
+    Nothing -> True
+    Just ((y, t), _) -> x > y || x == y && t == StartClosed
+  BothClosed x y -> member x is && member y is &&
+    Map.null (fst (Map.split y (snd (Map.split x m))))
+  LeftOpen x y -> openMember x is && member y is &&
+    Map.null (fst (Map.split y (snd (Map.split x m))))
+  RightOpen x y -> member x is && openMember y is &&
+    Map.null (fst (Map.split y (snd (Map.split x m))))
+  BothOpen x y -> openMember x is && openMember y is &&
+    Map.null (fst (Map.split y (snd (Map.split x m))))
 
 -- | Is this a proper subset? (/i.e./ a subset but not equal).
 isProperSubsetOf :: Ord r => IntervalSet r -> IntervalSet r -> Bool
