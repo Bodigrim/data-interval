@@ -1,5 +1,7 @@
 {-# OPTIONS_GHC -Wall #-}
 {-# LANGUAGE CPP, ScopedTypeVariables, TypeFamilies, DeriveDataTypeable #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE Trustworthy #-}
 {-# LANGUAGE RoleAnnotations #-}
 -----------------------------------------------------------------------------
@@ -64,28 +66,43 @@ import Prelude hiding (null, span)
 import Algebra.Lattice
 #endif
 import Control.DeepSeq
-import Data.Coerce
 import Data.Data
 import Data.ExtendedReal
 import Data.Hashable
 import Data.List (foldl')
 import Data.Map (Map)
-import qualified Data.Map as Map
+import qualified Data.Map.Strict as Map
+import Data.Maybe
 import qualified Data.Semigroup as Semigroup
-import Data.Interval (Interval)
+import Data.Interval (Interval, Boundary(..))
 import qualified Data.Interval as Interval
 #if __GLASGOW_HASKELL__ < 804
 import Data.Monoid (Monoid(..))
 #endif
 import qualified GHC.Exts as GHCExts
+import GHC.Generics (Generic)
 
 import qualified Data.OldIntervalSet as Old
+
+data TabStop
+  = StartOpen
+  | StartClosed
+  | StartAndFinish
+  | FinishOpen
+  | FinishClosed
+  | FinishAndStart
+  deriving (Eq, Ord, Show, Generic)
+
+instance NFData TabStop
+instance Hashable TabStop
 
 -- | A set comprising zero or more non-empty, /disconnected/ intervals.
 --
 -- Any connected intervals are merged together, and empty intervals are ignored.
-newtype IntervalSet r = IntervalSet (Map (Extended r) (Interval r))
-  deriving
+data IntervalSet r = IntervalSet
+  { _includesNegInf :: !Bool
+  , _splitPoints    :: !(Map r TabStop)
+  } deriving
     ( Eq
     , Ord
       -- ^ Note that this Ord is derived and not semantically meaningful.
@@ -96,11 +113,50 @@ newtype IntervalSet r = IntervalSet (Map (Extended r) (Interval r))
 
 type role IntervalSet nominal
 
-toOld :: IntervalSet r -> Old.IntervalSet r
-toOld = coerce
+toOld :: Ord r => IntervalSet r -> Old.IntervalSet r
+toOld = Old.fromAscList . toAscList
 
-fromOld :: Old.IntervalSet r -> IntervalSet r
-fromOld = coerce
+fromOld :: Ord r => Old.IntervalSet r -> IntervalSet r
+fromOld m = IntervalSet hasNegInf (Map.fromList $ glueTabStops $ concatMap toTabStops xs)
+  where
+    xs = Old.toAscList m
+
+    hasNegInf :: Bool
+    hasNegInf = case xs of
+      x : _
+        | NegInf <- Interval.lowerBound x
+        -> True
+      _ -> False
+
+    toStartTabStop :: (Extended r, Boundary) -> Maybe (r, TabStop)
+    toStartTabStop = \case
+      (NegInf, _) -> Nothing
+      (Finite r, Open) -> Just (r, StartOpen)
+      (Finite r, Closed) -> Just (r, StartClosed)
+      (PosInf, _) -> Nothing
+
+    toFinishTabStop :: (Extended r, Boundary) -> Maybe (r, TabStop)
+    toFinishTabStop = \case
+      (NegInf, _) -> Nothing
+      (Finite r, Open) -> Just (r, FinishOpen)
+      (Finite r, Closed) -> Just (r, FinishClosed)
+      (PosInf, _) -> Nothing
+
+    toTabStops :: Interval r -> [(r, TabStop)]
+    toTabStops i = maybeToList (toStartTabStop lb) ++ maybeToList (toFinishTabStop ub)
+      where
+        lb = Interval.lowerBound' i
+        ub = Interval.upperBound' i
+
+    glueTabStops :: Eq r => [(r, TabStop)] -> [(r, TabStop)]
+    glueTabStops ((x, StartClosed) : (y, FinishClosed) : rest)
+      | x == y
+      = (x, StartAndFinish) : glueTabStops rest
+    glueTabStops ((x, FinishOpen) : (y, StartOpen) : rest)
+      | x == y
+      = (x, FinishAndStart) : glueTabStops rest
+    glueTabStops (x : rest) = x : glueTabStops rest
+    glueTabStops [] = []
 
 instance (Ord r, Show r) => Show (IntervalSet r) where
   showsPrec p m = showParen (p > appPrec) $
@@ -136,10 +192,10 @@ setDataType :: DataType
 setDataType = mkDataType "Data.IntervalSet.IntervalSet" [fromListConstr]
 
 instance NFData r => NFData (IntervalSet r) where
-  rnf (IntervalSet m) = rnf m
+  rnf (IntervalSet b m) = b `seq` rnf m
 
 instance Hashable r => Hashable (IntervalSet r) where
-  hashWithSalt s m = hashWithSalt s (coerce m :: Old.IntervalSet r)
+  hashWithSalt s (IntervalSet r m) = s `hashWithSalt` r `hashWithSalt` Map.assocs m
 
 #ifdef MIN_VERSION_lattices
 #if MIN_VERSION_lattices(2,0,0)
@@ -247,7 +303,7 @@ singleton = fromOld . Old.singleton
 
 -- | Is the interval set empty?
 null :: IntervalSet r -> Bool
-null = Old.null . toOld
+null (IntervalSet b m) = not b && Map.null m
 
 -- | Is the element in the interval set?
 member :: Ord r => r -> IntervalSet r -> Bool
@@ -322,7 +378,27 @@ toList = toAscList
 
 -- | Convert a interval set into a list of intervals in ascending order.
 toAscList :: Ord r => IntervalSet r -> [Interval r]
-toAscList = Old.toAscList . toOld
+toAscList (IntervalSet hasNegInf m) = (if hasNegInf then f (NegInf, Open) else g) (Map.assocs m)
+  where
+    f lb [] = [Interval.interval lb (PosInf, Open)]
+    f lb ((x, t) : xs) = case t of
+      StartOpen      -> err
+      StartClosed    -> err
+      StartAndFinish -> err
+      FinishOpen     -> Interval.interval lb (Finite x, Open) : g xs
+      FinishClosed   -> Interval.interval lb (Finite x, Closed) : g xs
+      FinishAndStart -> Interval.interval lb (Finite x, Open) : f (Finite x, Open) xs
+
+    g [] = []
+    g ((x, t) : xs) = case t of
+      StartOpen      -> f (Finite x, Open) xs
+      StartClosed    -> f (Finite x, Closed) xs
+      StartAndFinish -> Interval.singleton x : g xs
+      FinishOpen     -> err
+      FinishClosed   -> err
+      FinishAndStart -> err
+
+    err = error "IntervalSet.toAscList: violated internal invariant"
 
 -- | Convert a interval set into a list of intervals in descending order.
 toDescList :: Ord r => IntervalSet r -> [Interval r]
