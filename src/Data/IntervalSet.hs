@@ -342,9 +342,36 @@ isSubsetOf is1 is2 = Old.isSubsetOf (toOld is1) (toOld is2)
 isProperSubsetOf :: Ord r => IntervalSet r -> IntervalSet r -> Bool
 isProperSubsetOf is1 is2 = isSubsetOf is1 is2 && is1 /= is2
 
+minElement :: Ord r => IntervalSet r -> Maybe (Extended r, Boundary)
+minElement (IntervalSet True _) = Just (NegInf, Open)
+minElement (IntervalSet False m) = case Map.minViewWithKey m of
+  Nothing -> Nothing
+  Just ((x, t), _) -> case t of
+    StartOpen      -> Just (Finite x, Open)
+    StartClosed    -> Just (Finite x, Closed)
+    StartAndFinish -> Just (Finite x, Closed)
+    FinishOpen     -> err
+    FinishClosed   -> err
+    FinishAndStart -> err
+  where
+    err = error "IntervalSet.minElement: violated internal invariant"
+
+maxElement :: Ord r => IntervalSet r -> Maybe (Extended r, Boundary)
+maxElement (IntervalSet hasNegInf m) = case Map.maxViewWithKey m of
+  Nothing -> if hasNegInf then Just (PosInf, Open) else Nothing
+  Just ((x, t), _) -> case t of
+    FinishOpen     -> Just (Finite x, Open)
+    FinishClosed   -> Just (Finite x, Closed)
+    StartAndFinish -> Just (Finite x, Closed)
+    _ -> Just (PosInf, Open)
+
 -- | convex hull of a set of intervals.
 span :: Ord r => IntervalSet r -> Interval r
-span = Old.span . toOld
+span s
+  | Just mn <- minElement s, Just mx <- maxElement s
+  = Interval.interval mn mx
+  | otherwise
+  = Empty
 
 -- -----------------------------------------------------------------------
 
