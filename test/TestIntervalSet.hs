@@ -82,6 +82,10 @@ prop_complement_intersection =
   fromList
 --------------------------------------------------------------------}
 
+case_fromList_minus_one_to_one_without_zero = xs @?= xs
+  where
+    xs = show (IntervalSet.fromList [ (-1 <..< 0 :: Interval Rational), 0 <..<1 ])
+
 case_fromList_connected =
   IntervalSet.fromList [ (0 <=..< 1 :: Interval Rational), 1 <=..<2 ]
   @?= IntervalSet.fromList [ 0 <=..<2 ]
@@ -281,6 +285,16 @@ prop_notMember_empty =
   isSubsetOf
 --------------------------------------------------------------------}
 
+case_isSubsetOf_1 = IntervalSet.isSubsetOf a b @?= False
+  where
+    a = IntervalSet.singleton (NegInf <..<= 2)
+    b = IntervalSet.singleton (NegInf <..<= 1)
+
+case_isSubsetOf_2 = IntervalSet.isSubsetOf a b @?= False
+  where
+    a = IntervalSet.singleton (1 <=..< PosInf)
+    b = IntervalSet.singleton (2 <=..< PosInf)
+
 prop_isSubsetOf_reflexive =
   forAll arbitrary $ \(a :: IntervalSet Rational) ->
     a `IntervalSet.isSubsetOf` a
@@ -296,6 +310,11 @@ prop_isProperSubsetOf_irreflexive =
 prop_fromList_toList_id =
   forAll arbitrary $ \(a :: IntervalSet Rational) ->
     IntervalSet.fromList (IntervalSet.toList a) == a
+
+case_toDescList_simple = xs @?= xs
+  where
+    xs = IntervalSet.toDescList $
+      IntervalSet.fromList [NegInf <..< Finite (-1), Finite 1 <..< PosInf]
 
 prop_toAscList_toDescList =
   forAll arbitrary $ \(a :: IntervalSet Rational) ->
