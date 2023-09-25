@@ -457,4 +457,35 @@ toAscList (IntervalSet hasNegInf m) = (if hasNegInf then f (NegInf, Open) else g
 
 -- | Convert a interval set into a list of intervals in descending order.
 toDescList :: Ord r => IntervalSet r -> [Interval r]
-toDescList = Old.toDescList . toOld
+toDescList s@(IntervalSet _hasNegInf m) = (if hasPosInf s then f (PosInf, Open) else g) (reverse $ Map.assocs m)
+  where
+    f ub [] = [Interval.interval (NegInf, Open) ub]
+    f ub ((x, t) : xs) = case t of
+      StartOpen      -> Interval.interval (Finite x, Open) ub : g xs
+      StartClosed    -> Interval.interval (Finite x, Closed) ub : g xs
+      StartAndFinish -> err
+      FinishOpen     -> err
+      FinishClosed   -> err
+      FinishAndStart -> Interval.interval (Finite x, Open) ub : f (Finite x, Open) xs
+
+    g [] = []
+    g ((x, t) : xs) = case t of
+      StartOpen      -> err
+      StartClosed    -> err
+      StartAndFinish -> Interval.singleton x : g xs
+      FinishOpen     -> f (Finite x, Open) xs
+      FinishClosed   -> f (Finite x, Closed) xs
+      FinishAndStart -> err
+
+    err = error "IntervalSet.toAscList: violated internal invariant"
+
+hasPosInf :: IntervalSet r -> Bool
+hasPosInf (IntervalSet hasNegInf m) = case Map.maxView m of
+  Nothing -> hasNegInf
+  Just (t, _)      -> case t of
+    StartOpen      -> True
+    StartClosed    -> True
+    StartAndFinish -> False
+    FinishOpen     -> False
+    FinishClosed   -> False
+    FinishAndStart -> True
