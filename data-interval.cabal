@@ -69,6 +69,7 @@ Library
      Data.Interval.Internal
      Data.IntegerInterval.Internal
      Data.IntervalMap.Base
+     Data.OldIntervalSet
 
 Test-suite test-interval
   Type:              exitcode-stdio-1.0
