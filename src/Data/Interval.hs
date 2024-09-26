@@ -87,13 +87,13 @@ import Algebra.Lattice
 import Control.Exception (assert)
 import Control.Monad hiding (join)
 import Data.ExtendedReal
+import Data.Foldable hiding (null)
 import Data.Interval.Internal
 import Data.IntervalRelation
-import Data.List (foldl', maximumBy, minimumBy)
 import Data.Maybe
 import Data.Monoid
 import Data.Ratio
-import Prelude hiding (null)
+import Prelude hiding (Foldable(..))
 
 infix 5 <=..<=
 infix 5 <..<=

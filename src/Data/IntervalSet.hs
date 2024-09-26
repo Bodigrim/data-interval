@@ -59,16 +59,16 @@ module Data.IntervalSet
   )
   where
 
-import Prelude hiding (null, span)
 #ifdef MIN_VERSION_lattices
 import Algebra.Lattice
 #endif
 import Control.DeepSeq
 import Data.Data
 import Data.ExtendedReal
+import Data.Foldable hiding (null, toList)
 import Data.Function
 import Data.Hashable
-import Data.List (sortBy, foldl')
+import Data.List (sortBy)
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Maybe
@@ -79,6 +79,7 @@ import qualified Data.Interval as Interval
 import Data.Monoid (Monoid(..))
 #endif
 import qualified GHC.Exts as GHCExts
+import Prelude hiding (Foldable(..), span)
 
 -- | A set comprising zero or more non-empty, /disconnected/ intervals.
 --
@@ -90,7 +91,6 @@ newtype IntervalSet r = IntervalSet (Map (Extended r) (Interval r))
       -- ^ Note that this Ord is derived and not semantically meaningful.
       -- The primary intended use case is to allow using 'IntervalSet'
       -- in maps and sets that require ordering.
-    , Typeable
     )
 
 type role IntervalSet nominal

@@ -26,7 +26,7 @@ data IntegerInterval
   | LessOrEqual !Integer
   | GreaterOrEqual !Integer
   | BothClosed !Integer !Integer
-  deriving (Eq, Typeable)
+  deriving (Eq)
 
 -- | Lower endpoint (/i.e./ greatest lower bound)  of the interval.
 --

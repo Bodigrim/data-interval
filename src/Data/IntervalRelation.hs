@@ -62,7 +62,7 @@ data Relation
   -- ^ Inverse of 'JustBefore'.
   | After
   -- ^ Inverse of 'Before'.
-  deriving (Eq, Ord, Enum, Bounded, Show, Read, Generic, Data, Typeable)
+  deriving (Eq, Ord, Enum, Bounded, Show, Read, Generic, Data)
 
 -- | Inverts a relation, such that @'invert' ('Data.Interval.relate' x y) = 'Data.Interval.relate' y x@
 invert :: Relation -> Relation
